@@ -58,26 +58,36 @@ const mutation = new GraphQLObjectType({
                 file: { type: GraphQLUpload }
             },
             resolve: async (parent, { file }) => {
-                const { createReadStream, filename, mimetype, encoding } =
-                    await file;
+                try {
+                    const { createReadStream, filename, mimetype, encoding } =
+                        await file;
 
-                const ext = path.extname(filename);
+                    const ext = path.extname(filename);
 
-                const newFileName = `${uuidV4()}${ext}`;
+                    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif'];
 
-                const uploadFileDest = path.resolve(
-                    pathToUploadsDir,
-                    newFileName
-                );
+                    if (!allowedExts.includes(ext)) {
+                        throw new Error('Unsupported file type provided');
+                    }
 
-                const out = fs.createWriteStream(uploadFileDest);
+                    const newFileName = `${uuidV4()}${ext}`;
 
-                createReadStream().pipe(out);
-                await finished(out);
+                    const uploadFileDest = path.resolve(
+                        pathToUploadsDir,
+                        newFileName
+                    );
 
-                uploadedFiles.push(newFileName);
+                    const out = fs.createWriteStream(uploadFileDest);
 
-                return { filename, mimetype, encoding };
+                    createReadStream().pipe(out);
+                    await finished(out);
+
+                    uploadedFiles.push(newFileName);
+
+                    return { filename, mimetype, encoding };
+                } catch (error) {
+                    return new Error(error.message ?? 'Failed to upload file!');
+                }
             }
         }
     }
@@ -96,16 +106,24 @@ app.listen(PORT, async () => {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
+    app.use(
+        graphqlUploadExpress({
+            maxFileSize: 1000000,
+            maxFiles: 1
+        })
+    );
+
     const apolloServer = new ApolloServer({
         schema,
         introspection: true,
         csrfPrevention: true,
         cache: 'bounded'
+        // formatError: error => {
+        //     return new Error(error.message ?? 'Something went wrong!');
+        // }
     });
 
     await apolloServer.start();
-
-    app.use(graphqlUploadExpress());
 
     app.use('/graphql', expressMiddleware(apolloServer));
 
