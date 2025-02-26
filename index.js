@@ -8,7 +8,8 @@ const {
     GraphQLSchema,
     GraphQLObjectType,
     GraphQLNonNull,
-    GraphQLString
+    GraphQLString,
+    GraphQLList
 } = require('graphql');
 const { GraphQLUpload, graphqlUploadExpress } = require('graphql-upload');
 const { finished } = require('stream/promises');
@@ -17,6 +18,9 @@ const { v4: uuidV4 } = require('uuid');
 const app = express();
 const pathToUploadsDir = path.resolve(__dirname, 'uploads');
 const PORT = parseInt(process.env.PORT ?? 5000);
+
+// mimics basic db ;)
+const uploadedFiles = [];
 
 const FileType = new GraphQLObjectType({
     name: 'FileType',
@@ -36,9 +40,11 @@ const FileType = new GraphQLObjectType({
 const query = new GraphQLObjectType({
     name: 'Query',
     fields: {
-        hello: {
-            type: new GraphQLNonNull(GraphQLString),
-            resolve: () => `Hello World!!`
+        uploads: {
+            type: new GraphQLNonNull(new GraphQLList(GraphQLString)),
+            resolve: () => {
+                return uploadedFiles;
+            }
         }
     }
 });
@@ -57,15 +63,19 @@ const mutation = new GraphQLObjectType({
 
                 const ext = path.extname(filename);
 
+                const newFileName = `${uuidV4()}${ext}`;
+
                 const uploadFileDest = path.resolve(
                     pathToUploadsDir,
-                    `${uuidV4()}${ext}`
+                    newFileName
                 );
 
                 const out = fs.createWriteStream(uploadFileDest);
 
                 createReadStream().pipe(out);
                 await finished(out);
+
+                uploadedFiles.push(newFileName);
 
                 return { filename, mimetype, encoding };
             }
